@@ -86,6 +86,12 @@
   .btn-primary:disabled { opacity: 0.4; cursor: default; }
   .btn-ghost { background: none; border: none; color: var(--ink-soft); padding: 10px 12px; font-size: 14px; cursor: pointer; }
   .btn-ghost-danger { background: none; border: none; color: var(--urgent); font-size: 13px; display: flex; align-items: center; gap: 5px; cursor: pointer; padding: 8px 4px; }
+  .login-screen { display: none; flex-direction: column; align-items: center; justify-content: center; min-height: 70vh; text-align: center; gap: 14px; padding: 0 20px; }
+  .login-screen h2 { font-size: 20px; }
+  .login-screen p { color: var(--ink-soft); font-size: 13px; max-width: 320px; line-height: 1.5; }
+  .login-screen input { border: 1.5px solid var(--line); border-radius: 10px; padding: 10px 12px; font-size: 14px; font-family: 'Inter', sans-serif; background: #fff; color: var(--ink); width: 100%; max-width: 300px; }
+  .login-msg { font-size: 12.5px; color: var(--ink-soft); min-height: 16px; }
+  .logout-btn { background: none; border: none; color: var(--ink-soft); font-size: 12px; cursor: pointer; padding: 0; text-decoration: underline; }
 </style>
 </head>
 <body>
@@ -93,14 +99,25 @@
 <div class="header">
   <div>
     <h1>Cronograma</h1>
-    <div class="sub"><span class="sync-dot" id="syncDot"></span><span id="syncText">publis, permutas, shop e orgânico</span></div>
+    <div class="sub">
+      <span class="sync-dot" id="syncDot"></span><span id="syncText">publis, permutas, shop e orgânico</span>
+      <button class="logout-btn" id="logoutBtn" style="display:none">sair</button>
+    </div>
   </div>
-  <button class="add-btn" id="addBtn" aria-label="Adicionar">+</button>
+  <button class="add-btn" id="addBtn" aria-label="Adicionar" style="display:none">+</button>
 </div>
 
 <div id="configWarning" class="config-warning" style="display:none">
   Falta configurar a conexão com o banco. Abra o arquivo <code>index.html</code> e preencha
   <code>SUPABASE_URL</code> e <code>SUPABASE_ANON_KEY</code> no topo do script (veja o passo a passo que te enviei).
+</div>
+
+<div class="login-screen" id="loginScreen">
+  <h2>Entrar</h2>
+  <p>Digite seu e-mail para receber um link de acesso ao cronograma. Só o e-mail autorizado consegue ver e editar os dados.</p>
+  <input type="email" id="loginEmail" placeholder="seu@email.com" autocomplete="email" />
+  <button class="btn-primary" id="sendLinkBtn">Enviar link de acesso</button>
+  <div class="login-msg" id="loginMsg"></div>
 </div>
 
 <div class="filters" id="filters"></div>
@@ -160,7 +177,7 @@ const STATUSES = [
 let cards = [];
 let filter = "todas";
 let editingId = null;
-let sb = null;
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 function setSync(state, text) {
   const dot = document.getElementById("syncDot");
@@ -340,14 +357,47 @@ document.getElementById("deleteBtn").onclick = () => {
   deleteCardRemote(id);
 };
 
-// ---- Boot ----
-if (SUPABASE_URL.startsWith("COLE_AQUI") || SUPABASE_ANON_KEY.startsWith("COLE_AQUI")) {
-  document.getElementById("configWarning").style.display = "block";
+// ---- Auth (link mágico) ----
+function showLogin() {
   document.getElementById("loadingMsg").style.display = "none";
-} else {
-  sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  document.getElementById("board").style.display = "none";
+  document.getElementById("filters").style.display = "none";
+  document.getElementById("addBtn").style.display = "none";
+  document.getElementById("logoutBtn").style.display = "none";
+  document.getElementById("loginScreen").style.display = "flex";
+}
+function showApp() {
+  document.getElementById("loginScreen").style.display = "none";
+  document.getElementById("filters").style.display = "flex";
+  document.getElementById("addBtn").style.display = "flex";
+  document.getElementById("logoutBtn").style.display = "inline";
+  document.getElementById("loadingMsg").style.display = "block";
   loadCards();
 }
+
+document.getElementById("sendLinkBtn").onclick = async () => {
+  const email = document.getElementById("loginEmail").value.trim();
+  const msg = document.getElementById("loginMsg");
+  if (!email) return;
+  const btn = document.getElementById("sendLinkBtn");
+  btn.disabled = true; btn.textContent = "Enviando...";
+  const { error } = await sb.auth.signInWithOtp({
+    email,
+    options: { emailRedirectTo: window.location.href },
+  });
+  msg.textContent = error ? "Erro ao enviar link. Tente novamente." : "Link enviado! Confira seu e-mail.";
+  btn.disabled = false; btn.textContent = "Enviar link de acesso";
+};
+
+document.getElementById("logoutBtn").onclick = () => sb.auth.signOut();
+
+sb.auth.onAuthStateChange((_event, session) => {
+  if (session) showApp(); else showLogin();
+});
+
+sb.auth.getSession().then(({ data: { session } }) => {
+  if (session) showApp(); else showLogin();
+});
 </script>
 </body>
 </html>
